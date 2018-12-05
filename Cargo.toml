@@ -1,0 +1,11 @@
+[package]
+name = "market_data"
+version = "0.1.0"
+authors = ["rkrasiuk <rokrassyuk@gmail.com>"]
+
+[dependencies]
+tungstenite = "0.6.1"
+reqwest = "0.9.5"
+serde = "1.0.80"
+serde_json = "1.0.33"
+serde_derive = "1.0.80"
