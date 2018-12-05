@@ -39,16 +39,20 @@ fn parse_data(body: &serde_json::value::Value) -> Option<MarketData> {
     let timestamp = Duration::from_secs(body["timestamp"].as_u64().expect("no timestamp provided"));
     let data = body["data"].as_object().expect("no data in body");
     let price = match data["lastDealPrice"].as_f64() {
-        Some(n) => match n as i64 {
-            0 => return None,
-            _ => n,
+        Some(n) => {
+            if n == 0.0 {
+                return None
+            }
+            n
         },
         None => return None,
     };
     let volume = match data["vol"].as_f64() {
-        Some(n) => match n as i64 {
-            0 => return None,
-            _ => n,
+        Some(n) => {
+            if n == 0.0 {
+                return None
+            }
+            n
         },
         None => return None,
     };
