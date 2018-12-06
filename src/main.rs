@@ -63,11 +63,6 @@ fn main() {
         .expect("can't connect to websocket");
 
     println!("Connected to the server");
-    println!("Response HTTP code: {}", response.code);
-    println!("Response contains the following headers:");
-    for &(ref header, _ /*value*/) in response.headers.iter() {
-        println!("* {}", header);
-    }
 
     let ack = socket.read_message().expect("Error reading message");
     println!("ack: {}", ack);
