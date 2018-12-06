@@ -1,38 +1,173 @@
 extern crate reqwest;
+extern crate serde;
+#[macro_use]
 extern crate serde_json;
+extern crate tungstenite;
+
+#[macro_use]
+extern crate serde_derive;
+
+extern crate url;
+// extern crate env_logger;
+
+use url::Url;
+use tungstenite::{Message, connect};
+
+use serde::{Deserialize, Deserializer};
+use serde_json::{Value, Error};
 
 use std::io::{Read};
 use std::time::Duration;
 use reqwest::{StatusCode};
 
-#[derive(Debug)]
+use std::net::TcpListener;
+use std::thread::spawn;
+use tungstenite::server::accept;
+
+
+#[derive(Deserialize, Debug)]
 struct MarketData {
-    market: String,
+    #[serde(rename = "lastDealPrice")]
     price: f64,
+
+    #[serde(rename = "vol")]
     volume: f64,
+
+    #[serde(default = "default_exchange")]
     exchange: String,
+
+    #[serde(skip_deserializing)]
     ts: Duration,
+    #[serde(skip_deserializing)]
+    market: String,
 }
 
-fn main() {
-    let market = String::from("ETH-BTC");
-    let request_url = String::from(format!("https://api.kucoin.com/v1/open/tick?symbol={}", market));
+fn default_exchange() -> String {
+    "kucoin".to_string()
+}
 
-    let mut res = reqwest::get(&request_url).expect("response failed");
-    match res.status() {
+// impl Deserialize for MarketData {
+//     fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
+//         where D: Deserializer,
+//     {
+//         let helper = Deserialize::deserialize(deserializer)?;
+
+//         use serde_json::from_value;
+//         use self::SealedEnvelope::*;
+
+//         let env = if helper.find("content") != None {
+//             Message(from_value(helper).unwrap())
+//         }
+//         else if helper.find("event") != None {
+//             Notification(from_value(helper).unwrap())
+//         }
+//         else if helper.find("method") != None {
+//             Command(from_value(helper).unwrap())
+//         }
+//         else if helper.find("state") != None {
+//             if helper.find("encryption")  != None ||
+//                helper.find("compression") != None || 
+//                helper.find("compression") != None
+//             {
+//                 SessionRes(from_value(helper).unwrap())
+//             } else {
+//                 SessionReq(from_value(helper).unwrap())
+//             }
+//         }
+//         else {
+//             Other(from_value(helper).unwrap())
+//         };
+//         Ok(env)
+//     }
+// }
+
+// impl<'de> Deserialize<'de> for MarketData {
+//     fn deserialize<D>(deserializer: D) -> Result<i32, D::Error> where D: Deserializer<'de> {
+//         deserializer.deserialize_i32(I32Visitor)
+//     }
+// }
+
+fn main() {
+    let acquire_server_url = String::from("https://kitchen.kucoin.com/v1/bullet/usercenter/loginUser?protocol=websocket&encrypt=true");
+    let mut acquire_response = reqwest::get(&acquire_server_url).expect("request failed");
+
+    match acquire_response.status() {
         StatusCode::OK => (),
-        status => panic!("failed to get the response: {}", status),
+        status => panic!("could not acquire websocket servers: {}", status),
     }
 
-    let mut body = String::new();
-    res.read_to_string(&mut body).unwrap();
-    let body: serde_json::value::Value = serde_json::from_str(&mut body).unwrap();
+    let mut acquire_body = String::new();
+    acquire_response.read_to_string(&mut acquire_body).expect("failed to parse acquire response");
+    let bullet_token = parse_bullet_token(&acquire_body).expect("failed to parse bullet token");
 
-    let market_data: MarketData = match parse_data(&body) {
-        Some(md) => md,
-        None => panic!("failed to parse response")
-    };
-    println!("{:?}", market_data);
+    //////
+    // wss://push1.kucoin.com/endpoint?bulletToken=VMW8akU53eI2d5mvRsUe1Jfy29RtrzhYkP7ghCHTEK-TfW1nXdcdOQ==.0VC3UBkT4flW7QPIbmvg7w==&format=json&resource=api
+    let web_socket_url = format!("wss://push1.kucoin.com/endpoint?bulletToken={}&format=json&resource=api", bullet_token);
+    let (mut socket, response) = connect(Url::parse(&web_socket_url).unwrap())
+        .expect("can't connect to websocket");
+
+    println!("Connected to the server");
+    println!("Response HTTP code: {}", response.code);
+    println!("Response contains the following headers:");
+    for &(ref header, _ /*value*/) in response.headers.iter() {
+        println!("* {}", header);
+    }
+
+    let ack = socket.read_message().expect("Error reading message");
+    println!("ack: {}", ack);
+
+    let subscription = r#"{
+        "id": 1,
+        "type": "subscribe",
+        "topic": "/market/ETH-BTC_TICK",
+        "req": 1,
+    }"#;
+    socket.write_message(Message::Text(subscription.into())).unwrap();
+    
+    // socket.write_message(Message::Text("Hello WebSocket".into())).unwrap();
+    loop {
+        let msg = socket.read_message().expect("Error reading message");
+        println!("Received: {}", msg);
+    }
+    // serde_json::to_string_pretty(&json!(&msg.into_text().unwrap())).unwrap()
+
+    // socket.close(None);
+
+    ////
+
+    // let market = String::from("ETH-BTC");
+    // let request_url = String::from(format!("https://api.kucoin.com/v1/open/tick?symbol={}", market));
+
+    // let mut res = reqwest::get(&request_url).expect("request failed");
+    // match res.status() {
+    //     StatusCode::OK => (),
+    //     status => panic!("failed to get the response: {}", status),
+    // }
+
+    // let mut body = String::new();
+    // res.read_to_string(&mut body).unwrap();
+    // println!("Body:\n{}", body);
+    // // let body: serde_json::value::Value = serde_json::from_str(&mut body).unwrap();
+
+    // //let deserialized: MarketData = serde_json::from_str(&body).unwrap();
+    // //println!("{:?}", deserialized);
+    // let body: serde_json::value::Value = serde_json::from_str(&mut body).unwrap();
+    // let deserialized: MarketData = serde_json::from_str(&serde_json::to_string(&body["data"]).unwrap()).unwrap();
+    // println!("LOL:\n{:?}", deserialized);
+    
+
+    // let market_data: MarketData = match parse_data(&body) {
+    //     Some(md) => md,
+    //     None => panic!("failed to parse response")
+    // };
+    // println!("{:?}", market_data);
+}
+
+
+fn parse_bullet_token(res: &String) -> Result<String, serde_json::Error> {
+    let bullet_token: Value = serde_json::from_str(&res)?;
+    let bullet_token = bullet_token["data"]["bulletToken"].as_str().unwrap();
+    Ok(bullet_token.to_owned())
 }
 
 fn parse_data(body: &serde_json::value::Value) -> Option<MarketData> {
