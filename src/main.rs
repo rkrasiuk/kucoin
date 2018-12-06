@@ -75,7 +75,14 @@ fn main() {
     socket.read_message().expect("Error receiving ack");
     
     loop {
-        let msg = socket.read_message().expect("Error reading message");
+        let msg = match socket.read_message() {
+            Ok(msg) => msg,
+            Err(err) => {
+                println!("error: {}", err);
+                socket.close(None).expect("Failed to close the connection");
+                break;
+            },
+        };
         if let Some(market_data) = parse_data(&msg) {
             println!("Received: {:?}", market_data);
         }
