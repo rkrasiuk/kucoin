@@ -2,19 +2,18 @@ extern crate reqwest;
 extern crate tungstenite;
 extern crate url;
 extern crate serde;
+extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
-#[macro_use]
-extern crate serde_json;
 
 
 use url::Url;
 use tungstenite::{Message, connect};
 use serde::{Deserialize, Deserializer};
-use serde_json::{Value};
-use std::io::{Read};
+use serde_json::Value;
+use std::io::Read;
 use std::time::Duration;
-use reqwest::{StatusCode};
+use reqwest::StatusCode;
 
 
 #[derive(Deserialize, Debug)]
@@ -30,7 +29,6 @@ struct MarketData {
 
     #[serde(rename = "datetime", deserialize_with = "duration_from_u64")]
     ts: Duration,
-    // Duration
 
     #[serde(rename = "symbol")]
     market: String,
