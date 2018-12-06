@@ -6,7 +6,6 @@ extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
 
-
 use url::Url;
 use tungstenite::{Message, connect};
 use serde::{Deserialize, Deserializer};
@@ -14,7 +13,6 @@ use serde_json::Value;
 use std::io::Read;
 use std::time::Duration;
 use reqwest::StatusCode;
-
 
 #[derive(Deserialize, Debug)]
 struct MarketData {
