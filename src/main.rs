@@ -1,91 +1,20 @@
 extern crate reqwest;
+extern crate tungstenite;
+extern crate url;
 extern crate serde;
 #[macro_use]
-extern crate serde_json;
-extern crate tungstenite;
-
-#[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate serde_json;
 
-extern crate url;
-// extern crate env_logger;
 
 use url::Url;
 use tungstenite::{Message, connect};
-
 use serde::{Deserialize, Deserializer};
 use serde_json::{Value, Error};
-
 use std::io::{Read};
 use std::time::Duration;
 use reqwest::{StatusCode};
-
-use std::net::TcpListener;
-use std::thread::spawn;
-use tungstenite::server::accept;
-
-
-#[derive(Deserialize, Debug)]
-struct MarketData {
-    #[serde(rename = "lastDealPrice")]
-    price: f64,
-
-    #[serde(rename = "vol")]
-    volume: f64,
-
-    #[serde(default = "default_exchange")]
-    exchange: String,
-
-    #[serde(skip_deserializing)]
-    ts: Duration,
-    #[serde(skip_deserializing)]
-    market: String,
-}
-
-fn default_exchange() -> String {
-    "kucoin".to_string()
-}
-
-// impl Deserialize for MarketData {
-//     fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
-//         where D: Deserializer,
-//     {
-//         let helper = Deserialize::deserialize(deserializer)?;
-
-//         use serde_json::from_value;
-//         use self::SealedEnvelope::*;
-
-//         let env = if helper.find("content") != None {
-//             Message(from_value(helper).unwrap())
-//         }
-//         else if helper.find("event") != None {
-//             Notification(from_value(helper).unwrap())
-//         }
-//         else if helper.find("method") != None {
-//             Command(from_value(helper).unwrap())
-//         }
-//         else if helper.find("state") != None {
-//             if helper.find("encryption")  != None ||
-//                helper.find("compression") != None || 
-//                helper.find("compression") != None
-//             {
-//                 SessionRes(from_value(helper).unwrap())
-//             } else {
-//                 SessionReq(from_value(helper).unwrap())
-//             }
-//         }
-//         else {
-//             Other(from_value(helper).unwrap())
-//         };
-//         Ok(env)
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for MarketData {
-//     fn deserialize<D>(deserializer: D) -> Result<i32, D::Error> where D: Deserializer<'de> {
-//         deserializer.deserialize_i32(I32Visitor)
-//     }
-// }
 
 fn main() {
     let acquire_server_url = String::from("https://kitchen.kucoin.com/v1/bullet/usercenter/loginUser?protocol=websocket&encrypt=true");
@@ -100,8 +29,6 @@ fn main() {
     acquire_response.read_to_string(&mut acquire_body).expect("failed to parse acquire response");
     let bullet_token = parse_bullet_token(&acquire_body).expect("failed to parse bullet token");
 
-    //////
-    // wss://push1.kucoin.com/endpoint?bulletToken=VMW8akU53eI2d5mvRsUe1Jfy29RtrzhYkP7ghCHTEK-TfW1nXdcdOQ==.0VC3UBkT4flW7QPIbmvg7w==&format=json&resource=api
     let web_socket_url = format!("wss://push1.kucoin.com/endpoint?bulletToken={}&format=json&resource=api", bullet_token);
     let (mut socket, response) = connect(Url::parse(&web_socket_url).unwrap())
         .expect("can't connect to websocket");
@@ -124,43 +51,12 @@ fn main() {
     }"#;
     socket.write_message(Message::Text(subscription.into())).unwrap();
     
-    // socket.write_message(Message::Text("Hello WebSocket".into())).unwrap();
     loop {
         let msg = socket.read_message().expect("Error reading message");
         println!("Received: {}", msg);
     }
-    // serde_json::to_string_pretty(&json!(&msg.into_text().unwrap())).unwrap()
 
     // socket.close(None);
-
-    ////
-
-    // let market = String::from("ETH-BTC");
-    // let request_url = String::from(format!("https://api.kucoin.com/v1/open/tick?symbol={}", market));
-
-    // let mut res = reqwest::get(&request_url).expect("request failed");
-    // match res.status() {
-    //     StatusCode::OK => (),
-    //     status => panic!("failed to get the response: {}", status),
-    // }
-
-    // let mut body = String::new();
-    // res.read_to_string(&mut body).unwrap();
-    // println!("Body:\n{}", body);
-    // // let body: serde_json::value::Value = serde_json::from_str(&mut body).unwrap();
-
-    // //let deserialized: MarketData = serde_json::from_str(&body).unwrap();
-    // //println!("{:?}", deserialized);
-    // let body: serde_json::value::Value = serde_json::from_str(&mut body).unwrap();
-    // let deserialized: MarketData = serde_json::from_str(&serde_json::to_string(&body["data"]).unwrap()).unwrap();
-    // println!("LOL:\n{:?}", deserialized);
-    
-
-    // let market_data: MarketData = match parse_data(&body) {
-    //     Some(md) => md,
-    //     None => panic!("failed to parse response")
-    // };
-    // println!("{:?}", market_data);
 }
 
 
@@ -168,38 +64,4 @@ fn parse_bullet_token(res: &String) -> Result<String, serde_json::Error> {
     let bullet_token: Value = serde_json::from_str(&res)?;
     let bullet_token = bullet_token["data"]["bulletToken"].as_str().unwrap();
     Ok(bullet_token.to_owned())
-}
-
-fn parse_data(body: &serde_json::value::Value) -> Option<MarketData> {
-    let timestamp = Duration::from_secs(body["timestamp"].as_u64().expect("no timestamp provided"));
-    let data = body["data"].as_object().expect("no data in body");
-    let price = match data["lastDealPrice"].as_f64() {
-        Some(n) => {
-            if n == 0.0 {
-                return None
-            }
-            n
-        },
-        None => return None,
-    };
-    let volume = match data["vol"].as_f64() {
-        Some(n) => {
-            if n == 0.0 {
-                return None
-            }
-            n
-        },
-        None => return None,
-    };
-    let coin_type = data["coinType"].as_str().unwrap();
-    let coin_type_pair = data["coinTypePair"].as_str().unwrap();
-    Some(
-        MarketData {
-            market: String::from(format!("{}{}", coin_type, coin_type_pair)),
-            price,
-            volume,
-            exchange: String::from("kucoin"),
-            ts: timestamp,
-        }
-    )
 }
