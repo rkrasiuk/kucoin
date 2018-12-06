@@ -82,36 +82,6 @@ fn main() {
             println!("Received: {:?}", market_data);
         }
     }
-    // serde_json::to_string_pretty(&json!(&msg.into_text().unwrap())).unwrap()
-
-    // socket.close(None);
-
-    // let market = String::from("ETH-BTC");
-    // let request_url = String::from(format!("https://api.kucoin.com/v1/open/tick?symbol={}", market));
-
-    // let mut res = reqwest::get(&request_url).expect("request failed");
-    // match res.status() {
-    //     StatusCode::OK => (),
-    //     status => panic!("failed to get the response: {}", status),
-    // }
-
-    // let mut body = String::new();
-    // res.read_to_string(&mut body).unwrap();
-    // println!("Body:\n{}", body);
-    // // let body: serde_json::value::Value = serde_json::from_str(&mut body).unwrap();
-
-    // //let deserialized: MarketData = serde_json::from_str(&body).unwrap();
-    // //println!("{:?}", deserialized);
-    // let body: serde_json::value::Value = serde_json::from_str(&mut body).unwrap();
-    // let deserialized: MarketData = serde_json::from_str(&serde_json::to_string(&body["data"]).unwrap()).unwrap();
-    // println!("LOL:\n{:?}", deserialized);
-    
-
-    // let market_data: MarketData = match parse_data(&body) {
-    //     Some(md) => md,
-    //     None => panic!("failed to parse response")
-    // };
-    // println!("{:?}", market_data);
 }
 
 
