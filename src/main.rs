@@ -57,7 +57,7 @@ fn main() {
     let bullet_token = parse_bullet_token(&acquire_body).expect("failed to parse bullet token");
 
     let web_socket_url = format!("wss://push1.kucoin.com/endpoint?bulletToken={}&format=json&resource=api", bullet_token);
-    let (mut socket, response) = connect(Url::parse(&web_socket_url).unwrap())
+    let (mut socket, _) = connect(Url::parse(&web_socket_url).unwrap())
         .expect("can't connect to websocket");
 
     println!("Connected to the server");
