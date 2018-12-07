@@ -50,7 +50,6 @@ fn main() {
             Ok(msg) => msg,
             Err(err) => {
                 println!("error: {}", err);
-                println!("Attempting reconnection...");
                 println!("Closing the connection...");
                 socket.close(None).expect("Failed to close the connection");
                 break;
