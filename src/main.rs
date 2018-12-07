@@ -12,7 +12,6 @@ use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::io::Read;
 use std::time::Duration;
-use std::thread;
 use reqwest::StatusCode;
 
 fn main() {
