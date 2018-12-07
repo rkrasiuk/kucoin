@@ -52,14 +52,6 @@ fn main() {
             Err(err) => {
                 println!("error: {}", err);
                 println!("Attempting reconnection...");
-                thread::sleep(Duration::from_millis(5000));
-                if let Ok((mut re_socket, _)) = connect(Url::parse(&web_socket_url).unwrap()) {
-                    socket = re_socket;
-                    socket.acknowledge();
-                    socket.subscribe(&subscription);
-                    println!("Reconnected.");
-                    continue;
-                }
                 println!("Closing the connection...");
                 socket.close(None).expect("Failed to close the connection");
                 break;
