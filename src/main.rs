@@ -45,20 +45,20 @@ fn duration_from_u64<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 
 fn main() {
     let acquire_server_url = String::from("https://kitchen.kucoin.com/v1/bullet/usercenter/loginUser?protocol=websocket&encrypt=true");
-    let mut acquire_response = reqwest::get(&acquire_server_url).expect("request failed");
+    let mut acquire_response = reqwest::get(&acquire_server_url).expect("Acquire bullet token request failed");
 
     match acquire_response.status() {
         StatusCode::OK => (),
-        status => panic!("could not acquire websocket servers: {}", status),
+        status => panic!("Could not acquire websocket servers: {}", status),
     }
 
     let mut acquire_body = String::new();
-    acquire_response.read_to_string(&mut acquire_body).expect("failed to parse acquire response");
-    let bullet_token = parse_bullet_token(&acquire_body).expect("failed to parse bullet token");
+    acquire_response.read_to_string(&mut acquire_body).expect("Failed to parse acquire response");
+    let bullet_token = parse_bullet_token(&acquire_body).expect("Failed to parse bullet token");
 
     let web_socket_url = format!("wss://push1.kucoin.com/endpoint?bulletToken={}&format=json&resource=api", bullet_token);
     let (mut socket, _) = connect(Url::parse(&web_socket_url).unwrap())
-        .expect("can't connect to websocket");
+        .expect("Can't connect to websocket");
 
     println!("Connected to the server");
 
@@ -79,6 +79,7 @@ fn main() {
             Ok(msg) => msg,
             Err(err) => {
                 println!("error: {}", err);
+                println!("Closing the connection...");
                 socket.close(None).expect("Failed to close the connection");
                 break;
             },
