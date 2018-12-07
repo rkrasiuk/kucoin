@@ -7,12 +7,69 @@ extern crate serde_json;
 extern crate serde_derive;
 
 use url::Url;
-use tungstenite::{Message, connect};
+use tungstenite::{WebSocket, Message, connect, client::AutoStream};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::io::Read;
 use std::time::Duration;
+use std::thread;
 use reqwest::StatusCode;
+
+fn main() {
+    const ACQUIRE_SERVER_URL: &str = "https://kitchen.kucoin.com/v1/bullet/usercenter/loginUser?protocol=websocket&encrypt=true";
+    const MARKET: &str = "ETH-BTC";
+
+    let mut acquire_response = reqwest::get(ACQUIRE_SERVER_URL).expect("Acquire bullet token request failed");
+
+    match acquire_response.status() {
+        StatusCode::OK => (),
+        status => panic!("Could not acquire websocket servers: {}", status),
+    }
+
+    let mut acquire_body = String::new();
+    acquire_response.read_to_string(&mut acquire_body).expect("Failed to parse acquire response");
+    let bullet_token = parse_bullet_token(&acquire_body).expect("Failed to parse bullet token");
+
+    let web_socket_url = format!("wss://push1.kucoin.com/endpoint?bulletToken={}&format=json&resource=api", bullet_token);
+    let (mut socket, _) = connect(Url::parse(&web_socket_url).unwrap())
+        .expect("Can't connect to websocket");
+
+    println!("Connected to the server");
+
+    socket.acknowledge();
+
+    let subscription = format!(r#"{{
+        "id": 1,
+        "type": "subscribe",
+        "topic": "/market/{}_TICK",
+        "req": 1,
+    }}"#, MARKET);
+    socket.subscribe(&subscription);
+    
+    loop {
+        let msg = match socket.read_message() {
+            Ok(msg) => msg,
+            Err(err) => {
+                println!("error: {}", err);
+                println!("Attempting reconnection...");
+                thread::sleep(Duration::from_millis(5000));
+                if let Ok((mut re_socket, _)) = connect(Url::parse(&web_socket_url).unwrap()) {
+                    socket = re_socket;
+                    socket.acknowledge();
+                    socket.subscribe(&subscription);
+                    println!("Reconnected.");
+                    continue;
+                }
+                println!("Closing the connection...");
+                socket.close(None).expect("Failed to close the connection");
+                break;
+            },
+        };
+        if let Some(market_data) = parse_data(&msg) {
+            println!("Received: {:?}", market_data);
+        }
+    }
+}
 
 #[derive(Deserialize, Debug)]
 struct MarketData {
@@ -43,53 +100,22 @@ fn duration_from_u64<'de, D>(deserializer: D) -> Result<Duration, D::Error>
     Ok(Duration::from_secs(s))
 }
 
-fn main() {
-    let acquire_server_url = String::from("https://kitchen.kucoin.com/v1/bullet/usercenter/loginUser?protocol=websocket&encrypt=true");
-    let mut acquire_response = reqwest::get(&acquire_server_url).expect("Acquire bullet token request failed");
-
-    match acquire_response.status() {
-        StatusCode::OK => (),
-        status => panic!("Could not acquire websocket servers: {}", status),
-    }
-
-    let mut acquire_body = String::new();
-    acquire_response.read_to_string(&mut acquire_body).expect("Failed to parse acquire response");
-    let bullet_token = parse_bullet_token(&acquire_body).expect("Failed to parse bullet token");
-
-    let web_socket_url = format!("wss://push1.kucoin.com/endpoint?bulletToken={}&format=json&resource=api", bullet_token);
-    let (mut socket, _) = connect(Url::parse(&web_socket_url).unwrap())
-        .expect("Can't connect to websocket");
-
-    println!("Connected to the server");
-
-    let ack = socket.read_message().expect("Error reading message");
-    println!("ack: {}", ack);
-
-    let subscription = r#"{
-        "id": 1,
-        "type": "subscribe",
-        "topic": "/market/ETH-BTC_TICK",
-        "req": 1,
-    }"#;
-    socket.write_message(Message::Text(subscription.into())).unwrap();
-    socket.read_message().expect("Error receiving ack");
-    
-    loop {
-        let msg = match socket.read_message() {
-            Ok(msg) => msg,
-            Err(err) => {
-                println!("error: {}", err);
-                println!("Closing the connection...");
-                socket.close(None).expect("Failed to close the connection");
-                break;
-            },
-        };
-        if let Some(market_data) = parse_data(&msg) {
-            println!("Received: {:?}", market_data);
-        }
-    }
+trait SocketTask {
+    fn subscribe(&mut self, &str);
+    fn acknowledge(&mut self);
 }
 
+impl SocketTask for WebSocket<AutoStream> {
+    fn subscribe(&mut self, sub: &str) {
+        self.write_message(Message::Text(sub.into())).unwrap();
+        self.acknowledge();
+    }
+
+    fn acknowledge(&mut self) {
+        let ack = self.read_message().expect("Error receiving ack");
+        println!("Acknowledged: {}", ack);
+    }
+}
 
 fn parse_bullet_token(res: &str) -> Result<String, serde_json::Error> {
     let bullet_token: Value = serde_json::from_str(&res)?;
