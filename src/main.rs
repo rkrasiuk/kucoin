@@ -41,7 +41,7 @@ fn main() {
         "id": 1,
         "type": "subscribe",
         "topic": "/market/{}_TICK",
-        "req": 1,
+        "req": 0,
     }}"#, MARKET);
     socket.subscribe(&subscription);
     
@@ -98,7 +98,6 @@ trait SocketTask {
 impl SocketTask for WebSocket<AutoStream> {
     fn subscribe(&mut self, sub: &str) {
         self.write_message(Message::Text(sub.into())).unwrap();
-        self.acknowledge();
     }
 
     fn acknowledge(&mut self) {
