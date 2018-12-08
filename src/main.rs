@@ -5,6 +5,8 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
+extern crate futures;
+extern crate futures_backoff;
 
 use url::Url;
 use tungstenite::{WebSocket, Message, connect, client::AutoStream};
@@ -14,13 +16,15 @@ use std::io::Read;
 use std::time::Duration;
 use std::thread;
 use reqwest::StatusCode;
+use futures::{Future, future};
+use futures_backoff::retry;
 
 fn main() {
     const ACQUIRE_SERVER_URL: &str = "https://kitchen.kucoin.com/v1/bullet/usercenter/loginUser?protocol=websocket&encrypt=true";
     const MARKET: &str = "ETH-BTC";
 
     let mut acquire_response = reqwest::get(ACQUIRE_SERVER_URL).expect("Acquire bullet token request failed");
-
+    
     match acquire_response.status() {
         StatusCode::OK => (),
         status => panic!("Could not acquire websocket servers: {}", status),
@@ -52,20 +56,31 @@ fn main() {
             Err(err) => {
                 println!("error: {}", err);
                 println!("Attempting reconnection...");
-                thread::sleep(Duration::from_millis(5000));
-                if let Ok((mut re_socket, _)) = connect(Url::parse(&web_socket_url).unwrap()) {
-                    socket = re_socket;
-                    socket.acknowledge();
-                    socket.subscribe(&subscription);
-                    println!("Reconnected.");
-                    continue;
-                }
-                println!("Closing the connection...");
-                socket.close(None).expect("Failed to close the connection");
-                break;
+                //thread::sleep(Duration::from_millis(5000));
+                let future = retry(|| {
+                    let (socket, _) = connect(Url::parse(&web_socket_url).unwrap()).unwrap();
+                    future::ok::<WebSocket<AutoStream>, ::std::io::Error>(socket)
+                });
+
+                socket = future.wait().unwrap();
+                socket.acknowledge();
+                socket.subscribe(&subscription);
+                println!("Reconnected.");
+                continue;
+
+                // if let Ok((mut re_socket, _)) = connect(Url::parse(&web_socket_url).unwrap()) {
+                //     socket = re_socket;
+                //     socket.acknowledge();
+                //     socket.subscribe(&subscription);
+                //     println!("Reconnected.");
+                //     continue;
+                // }
+                // println!("Closing the connection...");
+                // socket.close(None).expect("Failed to close the connection");
+                // break;
             },
         };
-        if let Some(market_data) = parse_data(&msg) {
+        if let Some(market_data) = parse_message(&msg) {
             println!("Received: {:?}", market_data);
         }
     }
@@ -122,11 +137,21 @@ fn parse_bullet_token(res: &str) -> Result<String, serde_json::Error> {
     Ok(bullet_token.to_owned())
 }
 
-fn parse_data(msg: &tungstenite::Message) -> Option<MarketData> {
-    let body: serde_json::value::Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
-    let market_data: MarketData = serde_json::from_str(&serde_json::to_string(&body["data"]).unwrap()).unwrap();
+fn parse_message(msg: &tungstenite::Message) -> Option<MarketData> {
+    let market_data: MarketData = match parse_data(&msg) {
+        Ok(md) => md,
+        Err(_) => return None,
+    };
+
     if market_data.price == 0.0 || market_data.volume == 0.0 {
         return None;
     }
     Some(market_data)
+}
+
+fn parse_data(msg: &tungstenite::Message) -> Result<MarketData, serde_json::Error> {
+    let body: serde_json::value::Value = serde_json::from_str(msg.to_text().unwrap())?;
+    let data = serde_json::to_string(&body["data"])?;
+    let market_data: MarketData = serde_json::from_str(&data)?;
+    Ok(market_data)
 }
