@@ -29,7 +29,7 @@ const MARKET: &str = "ETH-BTC";
 fn main() {
     match run_websocket() {
         Ok(_) => (),
-        Err(e) => panic!(e),
+        Err(e) => panic!("{}", e),
     };
 }
 
@@ -51,11 +51,14 @@ fn run_websocket() -> Result<(), Error> {
     thread::spawn(move || {
         loop {
             thread::sleep(Duration::from_millis(40000));
-            tx.send(()).unwrap();
+            tx.send(()).expect("lol here");
         }
     });
 
     loop {
+        if let Ok(_tick) = rx.try_recv() {
+            socket.ping()?;
+        }
         let msg = match socket.read_message() {
             Ok(msg) => msg,
             Err(err) => {
@@ -66,9 +69,6 @@ fn run_websocket() -> Result<(), Error> {
         };
         if let Some(market_data) = parse_message(&msg)? {
             println!("Received: {:?}", market_data);
-        }
-        if let Ok(_tick) = rx.try_recv() {
-            socket.ping()?;
         }
     }
 }
