@@ -10,10 +10,11 @@ extern crate futures_backoff;
 #[macro_use]
 extern crate failure;
 
+use std::sync::mpsc;
+use std::thread;
 use url::Url;
 use tungstenite::{WebSocket, Message, connect, client::AutoStream};
 use serde::{Deserialize, Deserializer};
-use serde_json::Value;
 use std::io::Read;
 use std::time::Duration;
 use reqwest::StatusCode;
@@ -46,6 +47,14 @@ fn run_websocket() -> Result<(), Error> {
     socket.acknowledge()?;
     socket.subscribe(MARKET)?;
 
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_millis(40000));
+            tx.send(()).unwrap();
+        }
+    });
+
     loop {
         let msg = match socket.read_message() {
             Ok(msg) => msg,
@@ -57,6 +66,9 @@ fn run_websocket() -> Result<(), Error> {
         };
         if let Some(market_data) = parse_message(&msg)? {
             println!("Received: {:?}", market_data);
+        }
+        if let Ok(_tick) = rx.try_recv() {
+            socket.ping()?;
         }
     }
 }
@@ -137,6 +149,7 @@ fn duration_from_u64<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 trait SocketTask {
     fn subscribe(&mut self, &str) -> Result<(), Error>;
     fn acknowledge(&mut self) -> Result<(), Error>;
+    fn ping(&mut self) -> Result<(), Error>;
 }
 
 impl SocketTask for WebSocket<AutoStream> {
@@ -155,6 +168,17 @@ impl SocketTask for WebSocket<AutoStream> {
     fn acknowledge(&mut self) -> Result<(), Error> {
         let ack = self.read_message()?;
         println!("Acknowledged: {}", ack);
+        Ok(())
+    }
+
+    fn ping(&mut self) -> Result<(), Error> {
+        let ping = r#"{
+            "id": 1,
+            "type": "ping",
+        }"#;
+
+        self.write_message(Message::Text(String::from(ping)))?;
+        self.acknowledge()?;
         Ok(())
     }
 }
