@@ -56,7 +56,7 @@ fn run_websocket() -> Result<(), Error> {
                 continue;
             },
         };
-        if let Some(market_data) = parse_message(&msg) {
+        if let Some(market_data) = parse_message(&msg)? {
             println!("Received: {:?}", market_data);
         }
     }
@@ -81,16 +81,29 @@ fn get_token() -> Result<String, Error> {
 }
 
 fn parse_bullet_token(res: &str) -> Result<String, Error> {
-    let bullet_token: Value = serde_json::from_str(&res)?;
-    let bullet_token = match bullet_token["data"]["bulletToken"].as_str() {
-        Some(bt) => bt,
-        None => {
-            return Err(format_err!(
-                "Bullet token not found",
-            ));
-        }
-    };
-    Ok(bullet_token.to_owned())
+    let body: Response = serde_json::from_str(&res)?;
+    if let Data::BulletToken {bullet_token} = body.data {
+        return Ok(bullet_token.to_owned());
+    }
+    Err(
+        format_err!("Failed to receive bullet token")
+    )
+}
+
+#[derive(Deserialize, Debug)]
+struct Response {
+    data: Data
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+enum Data {
+    BulletToken { 
+        #[serde(rename = "bulletToken")]
+        bullet_token: String
+    },
+
+    MarketData(MarketData),
 }
 
 #[derive(Deserialize, Debug)]
@@ -168,21 +181,23 @@ fn reconnect(url: &str) -> Result<WebSocket<AutoStream>, Error> {
     Ok(socket)
 }
 
-fn parse_message(msg: &tungstenite::Message) -> Option<MarketData> {
-    let market_data: MarketData = match parse_data(&msg) {
-        Ok(md) => md,
-        Err(_) => return None,
-    };
+fn parse_message(msg: &tungstenite::Message) -> Result<Option<MarketData>, Error> {
+    let market_data: MarketData = parse_data(&msg)?;
 
     if market_data.price <= 0.0 || market_data.volume <= 0.0 {
-        return None;
+        return Ok(None);
     }
-    Some(market_data)
+
+    Ok(Some(market_data))
 }
 
 fn parse_data(msg: &tungstenite::Message) -> Result<MarketData, Error> {
-    let body: serde_json::value::Value = serde_json::from_str(msg.to_text()?)?;
-    let data = serde_json::to_string(&body["data"])?;
-    let market_data: MarketData = serde_json::from_str(&data)?;
-    Ok(market_data)
+    let body: Response = serde_json::from_str(msg.to_text()?)?;
+    if let Data::MarketData (market_data) = body.data {
+        return Ok(market_data)
+    }
+    
+    Err(
+        format_err!("Error parsing market data")
+    )
 }
