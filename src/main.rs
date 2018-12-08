@@ -16,7 +16,6 @@ use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::io::Read;
 use std::time::Duration;
-//use std::thread;
 use reqwest::StatusCode;
 use futures::{Future, future};
 use futures_backoff::retry;
@@ -196,7 +195,7 @@ fn parse_data(msg: &tungstenite::Message) -> Result<MarketData, Error> {
     if let Data::MarketData (market_data) = body.data {
         return Ok(market_data)
     }
-    
+
     Err(
         format_err!("Error parsing market data")
     )
