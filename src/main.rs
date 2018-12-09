@@ -10,8 +10,6 @@ extern crate futures_backoff;
 #[macro_use]
 extern crate failure;
 
-use std::sync::mpsc;
-use std::thread;
 use url::Url;
 use tungstenite::{WebSocket, Message, connect, client::AutoStream};
 use serde::{Deserialize, Deserializer};
@@ -47,18 +45,7 @@ fn run_websocket() -> Result<(), Error> {
     socket.acknowledge()?;
     socket.subscribe(MARKET)?;
 
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        loop {
-            thread::sleep(Duration::from_millis(40000));
-            tx.send(()).expect("lol here");
-        }
-    });
-
     loop {
-        if let Ok(_tick) = rx.try_recv() {
-            socket.ping()?;
-        }
         let msg = match socket.read_message() {
             Ok(msg) => msg,
             Err(err) => {
